@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ur"><head><meta charset="utf-8"><title>Couples Ludo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{--bg:#fff6f0;--fg:#2b1d24;--card:#fff;--bd:#f0d5d5;--ac:#d81b60;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1218;--fg:#f6e9ee;--card:#2a1c24;--bd:#4a3340}}
+:root[data-theme="dark"]{--bg:#1c1218;--fg:#f6e9ee;--card:#2a1c24;--bd:#4a3340}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px system-ui,-apple-system,Segoe UI,sans-serif}
+#app{max-width:520px;margin:0 auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:14px;margin:10px 0}
+h1{font-size:26px;margin:6px 0;text-align:center}h2{font-size:17px;margin:0 0 8px}
+button{font:inherit;border:0;border-radius:12px;padding:11px 16px;background:var(--ac);color:#fff;cursor:pointer;margin:3px 0}
+button.s{background:transparent;color:var(--fg);border:1px solid var(--bd)}button.w{width:100%}button:disabled{opacity:.45}
+input{font:inherit;width:100%;padding:11px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--fg);margin:3px 0}
+.av{font-size:54px;text-align:center;cursor:pointer}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+.pl{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;border:2px solid transparent}.pl.t{border-color:var(--ac)}
+.dot{width:14px;height:14px;border-radius:50%;flex:none}.sm{font-size:13px;opacity:.75}
+#board{display:grid;grid-template-columns:repeat(15,1fr);aspect-ratio:1;width:100%;border:2px solid var(--fg);border-radius:8px;overflow:hidden;background:#fff}
+#board div{border:.5px solid #0002;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;position:relative;min-width:0}
+.tk{width:80%;aspect-ratio:1;border-radius:50%;border:2px solid #fff;font-size:min(3.2vw,15px);display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 0 0 1px #0007;margin:0}
+.tk.go{animation:p .6s infinite alternate;cursor:pointer;z-index:2}@keyframes p{to{transform:scale(1.25)}}
+#dice{font-size:46px;text-align:center;min-width:64px}
+#chat{height:170px;overflow:auto;font-size:14px}#chat p{margin:3px 0}
+.bar{display:flex;gap:6px;flex-wrap:wrap}.bar button{flex:1;font-size:13px;padding:8px}
+</style></head><body><div id="app"></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const COL=['#e53935','#43a047','#f9a825','#1e88e5'],CN=['Laal','Hara','Peela','Neela'],EM=['🦁','🐯','🦊','🐼','🐸','🦄','🐙','🐵','🦉','🐧','🐲','🦋'],SEAT=[0,2,1,3];
+const WS={ws:null,id:0,cb:{},subs:{}};
+function conn(){const w=new WebSocket((location.protocol=='https:'?'wss://':'ws://')+location.host);WS.ws=w;
+ w.onopen=()=>Object.entries(WS.subs).forEach(([k,s])=>w.send(JSON.stringify({op:'sub',k,p:s.p,kind:s.kind})));
+ w.onmessage=e=>{const m=JSON.parse(e.data);if(m.rid&&WS.cb[m.rid]){WS.cb[m.rid](m);delete WS.cb[m.rid]}else if(m.k&&WS.subs[m.k])WS.subs[m.k].f(m)};
+ w.onclose=()=>setTimeout(conn,1500)}
+const rq=o=>new Promise((ok,no)=>{if(!WS.ws||WS.ws.readyState!=1)return no({message:'Server se connection nahi hai'});const rid=++WS.id;WS.cb[rid]=m=>m.err?no({message:m.err}):ok(m);WS.ws.send(JSON.stringify({...o,rid}))});
+const sub=(p,kind,f)=>{const k=kind+p+Math.random();WS.subs[k]={p,kind,f};if(WS.ws&&WS.ws.readyState==1)WS.ws.send(JSON.stringify({op:'sub',k,p,kind}));return()=>{delete WS.subs[k];try{WS.ws.send(JSON.stringify({op:'unsub',k}))}catch(e){}}};
+const dw=m=>({exists:m.data!=null,data:()=>m.data}),cw=m=>({docs:m.docs.map(x=>({id:x.id,data:()=>x.d}))});
+const docRef=p=>({get:async()=>dw(await rq({op:'get',p})),set:d=>rq({op:'set',p,data:d}),update:d=>rq({op:'upd',p,data:d}),delete:()=>rq({op:'del',p}),onSnapshot:f=>sub(p,'doc',m=>f(dw(m))),collection:c=>colRef(p+'/'+c)});
+const colRef=p=>({add:d=>rq({op:'add',p,data:d}),orderBy:()=>({limit:()=>({onSnapshot:f=>sub(p,'col',m=>f(cw(m)))})}),get:async()=>cw(await rq({op:'list',p}))});
+const START=[0,13,26,39],SAFE=[0,8,13,21,26,34,39,47];
+const TR=[];[[1,6,1,0,5],[6,5,0,-1,6],[7,0,1,0,2],[8,1,0,1,5],[9,6,1,0,6],[14,7,0,1,2],[13,8,-1,0,5],[8,9,0,1,6],[7,14,-1,0,2],[6,13,0,-1,5],[5,8,-1,0,6],[0,7,0,-1,2]].forEach(([x,y,dx,dy,n])=>{for(let i=0;i<n;i++)TR.push([x+dx*i,y+dy*i])});
+const HM=[[1,2,3,4,5].map(i=>[i,7]),[1,2,3,4,5].map(i=>[7,i]),[13,12,11,10,9].map(i=>[i,7]),[13,12,11,10,9].map(i=>[7,i])];
+const YARD=[[[2,2],[4,2],[2,4],[4,4]],[[10,2],[12,2],[10,4],[12,4]],[[10,10],[12,10],[10,12],[12,12]],[[2,10],[4,10],[2,12],[4,12]]];
+let me={name:'',em:0,id:''},db=null,owner=false,G=null,mode='',code='',ref=null,unsub=[],chat=[],toastT;
+try{Object.assign(me,JSON.parse(localStorage.getItem('lq')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('lq',JSON.stringify(me))}catch(e){}};
+const hash=s=>[...s].reduce((a,c)=>(a*31+c.charCodeAt(0))>>>0,7);
+function toast(t){alert(t)}
+function cell(g,pi,ti){const p=g.tokens[pi][ti],c=g.players[pi].c;if(p<0)return YARD[c][ti];if(p<=50)return TR[(START[c]+p)%52];if(p<=55)return HM[c][p-51];return[7,7]}
+function movable(g){const d=g.dice,t=g.tokens[g.turn];return d?t.map((p,i)=>p<0?(d==6?i:-1):(p+d<=56?i:-1)).filter(i=>i>=0):[]}
+function nextTurn(g){g.dice=null;g.turn=(g.turn+1)%g.players.length}
+function doRoll(g){const d=1+Math.floor(Math.random()*6),pl=g.players[g.turn];g.dice=d;g.last=d;g.msg=pl.name+' ko '+d+' aaya';if(!movable(g).length){g.msg+=' - chaal nahi';nextTurn(g)}}
+function doMove(g,ti){const pi=g.turn,pl=g.players[pi],d=g.dice,t=g.tokens[pi];let np=t[ti]<0?0:t[ti]+d;t[ti]=np;let cap=false;
+ if(np<=50){const a=(START[pl.c]+np)%52;if(!SAFE.includes(a))g.players.forEach((q,qi)=>{if(qi!=pi)g.tokens[qi].forEach((p,i)=>{if(p>=0&&p<=50&&(START[q.c]+p)%52==a){g.tokens[qi][i]=-1;cap=true}})})}
+ if(t.every(p=>p==56)){g.status='done';g.winner=pl.name;g.dice=null;g.msg=pl.name+' jeet gaya!';return}
+ g.msg=pl.name+(cap?' ne gotti kaat di!':' ne chaal chali');if(d==6||cap){g.dice=null}else nextTurn(g)}
+const fresh=(pl,st)=>({players:pl,tokens:pl.map(()=>[-1,-1,-1,-1]),turn:0,dice:null,last:0,status:st,winner:'',msg:'Khel shuru!',host:me.id});
+const myIdx=()=>G?G.players.findIndex(p=>p.id==me.id):-1;
+const isAdmin=()=>owner||(G&&G.host==me.id);
+const myTurn=()=>G&&G.status=='play'&&(mode=='off'||(myIdx()==G.turn));
+function push(){draw();if(mode=='on'&&ref){const{players,tokens,turn,dice,last,status,winner,msg}=G;ref.update({players,tokens,turn,dice,last,status,winner,msg}).catch(e=>toast('Save nahi hua: '+(e.message||e)))}}
+function clearSubs(){unsub.forEach(f=>{try{f()}catch(e){}});unsub=[];chat=[]}
+function home(){clearSubs();G=null;mode='';code='';
+ $('#app').innerHTML=`<h1>💕 Couples Ludo</h1><div class="card"><div class="av" id="av">${EM[me.em]}</div><p style="text-align:center;margin:4px"><b>${esc(me.name)}</b><br><span class="sm">character badalne ke liye tap karo</span></p></div>
+ <div class="card"><button class="w" id="off">🎲 Offline khelo (ek phone par)</button>
+ <button class="w" id="mk" ${db?'':'disabled'}>🌐 Online room banao</button>
+ <div class="row"><input id="rc" placeholder="Room code" maxlength="6" style="text-transform:uppercase"><button id="jn" ${db?'':'disabled'}>Join</button></div>
+ 
+ <button class="s w" id="adm">🛡️ ${owner?'Admin panel':'Admin login'}</button><button class="s w" id="lo">Naam badlo</button></div>`;
+ $('#av').onclick=()=>{me.em=(me.em+1)%EM.length;save();$('#av').textContent=EM[me.em]};
+ $('#off').onclick=offSetup;$('#mk').onclick=mkRoom;$('#jn').onclick=()=>joinRoom($('#rc').value.trim().toUpperCase());
+ $('#lo').onclick=()=>{me.name='';login()};$('#adm').onclick=async()=>{if(!owner){const pw=prompt('Admin password');if(!pw)return;try{await rq({op:'auth',pw});owner=true}catch(e){return toast(e.message)}}admin()}}
+function login(){$('#app').innerHTML=`<h1>💕 Couples Ludo</h1><div class="card"><h2>Apna naam likho</h2><input id="nm" placeholder="Naam" maxlength="16"><button class="w" id="go">Shuru karo</button></div>`;
+ $('#go').onclick=()=>{const n=$('#nm').value.trim();if(!n)return;me.name=n;me.em=hash(n)%EM.length;save();home()}}
+function offSetup(){$('#app').innerHTML=`<h1>Offline Game</h1><div class="card"><h2>Khilari (2 se 4)</h2><input class="pn" value="${esc(me.name)}"><input class="pn" placeholder="Player 2"><input class="pn" placeholder="Player 3 (optional)"><input class="pn" placeholder="Player 4 (optional)"><button class="w" id="st">Khel shuru</button><button class="s w" id="bk">Wapas</button></div>`;
+ $('#bk').onclick=home;$('#st').onclick=()=>{const ns=[...document.querySelectorAll('.pn')].map(i=>i.value.trim()).filter(Boolean);if(ns.length<2)return toast('Kam az kam 2 khilari');
+ mode='off';G=fresh(ns.map((n,i)=>({id:'l'+i,name:n,em:hash(n)%EM.length,c:SEAT[i]})),'play');G.host=me.id;chat=[];game()}}
+const gen=()=>Math.random().toString(36).slice(2,8).toUpperCase();
+async function mkRoom(){code=gen();ref=db.doc('rooms/'+code);G=fresh([{id:me.id,name:me.name,em:me.em,c:0}],'lobby');G.msg='Lobby';
+ try{await ref.set(G);mode='on';sub()}catch(e){toast('Room nahi bana: '+(e.message||e))}}
+async function joinRoom(c,spec){if(!c)return;ref=db.doc('rooms/'+c);try{const s=await ref.get();if(!s.exists)return toast('Room nahi mila');const d=s.data();
+ if(!spec&&!d.players.some(p=>p.id==me.id)){if(d.status!='lobby')return toast('Khel shuru ho chuka hai');if(d.players.length>=4)return toast('Room full hai');
+  await ref.update({players:[...d.players,{id:me.id,name:me.name,em:me.em,c:SEAT[d.players.length]}],tokens:[...d.tokens,[-1,-1,-1,-1]]})}
+ code=c;mode='on';sub()}catch(e){toast('Join nahi hua: '+(e.message||e))}}
+function sub(){clearSubs();game();unsub.push(ref.onSnapshot(s=>{if(!s.exists){toast('Room band ho gaya');return home()}G=s.data();draw()}));
+ unsub.push(ref.collection('msgs').orderBy('t').limit(100).onSnapshot(s=>{chat=s.docs.map(d=>d.data());drawChat()}))}
+function game(){$('#app').innerHTML=`<div class="row"><div><b>${mode=='on'?'Room: '+code:'Offline'}</b></div><button class="s" id="hm" style="flex:none">⬅ Ghar</button></div><div id="gv"></div>
+ <div class="card"><h2>💬 Chat</h2><div id="chat"></div><div class="row"><input id="cm" placeholder="Message likho..."><button id="cs" style="flex:none">Bhejo</button></div></div>`;
+ $('#hm').onclick=()=>{if(mode=='on'&&myIdx()>=0&&G.status=='lobby'&&!isAdmin()){ref.update({players:G.players.filter(p=>p.id!=me.id),tokens:G.tokens.slice(0,-1)}).catch(()=>{})}home()};
+ $('#cs').onclick=sendChat;$('#cm').onkeydown=e=>{if(e.key=='Enter')sendChat()};draw();drawChat()}
+function sendChat(){const x=$('#cm').value.trim();if(!x)return;$('#cm').value='';
+ if(mode=='on')ref.collection('msgs').add({n:me.name,e:EM[me.em],t:Date.now(),x}).catch(e=>toast(e.message||e));
+ else{const p=G.players[G.turn];chat.push({n:p.name,e:EM[p.em],x});drawChat()}}
+function drawChat(){const c=$('#chat');if(!c)return;c.innerHTML=chat.map(m=>`<p><b>${m.e||''} ${esc(m.n)}:</b> ${esc(m.x)}</p>`).join('')||'<p class="sm">Abhi koi message nahi</p>';c.scrollTop=1e9}
+function draw(){const v=$('#gv');if(!v||!G)return;const mi=myIdx(),adm=isAdmin();
+ const plist=G.players.map((p,i)=>`<div class="pl ${G.status=='play'&&i==G.turn?'t':''}"><span class="dot" style="background:${COL[p.c]}"></span><span style="font-size:22px">${EM[p.em]}</span><span style="flex:1">${esc(p.name)}${p.id==me.id&&mode=='on'?' (tum)':''}<br><span class="sm">${CN[p.c]}${G.status!='lobby'?' · ghar: '+G.tokens[i].filter(x=>x==56).length+'/4':''}</span></span>${mode=='on'&&adm&&p.id!=me.id?`<button class="s kk" data-i="${i}" style="padding:4px 9px">✕</button>`:''}</div>`).join('');
+ if(G.status=='lobby'){v.innerHTML=`<div class="card"><h2>Lobby</h2><p class="sm">Room code <b style="font-size:20px">${code}</b> doston ko bhejo (2 se 4 khilari)</p>${plist}<button class="w" id="sg" ${adm&&G.players.length>=2?'':'disabled'}>${adm?'Khel shuru karo':'Host ka intezar...'}</button></div>`;
+  $('#sg').onclick=()=>{G.status='play';G.msg='Khel shuru!';push()};bindKick();return}
+ let cells='';const at={};G.players.forEach((p,pi)=>G.tokens[pi].forEach((_,ti)=>{const[x,y]=cell(G,pi,ti);(at[y*15+x]=at[y*15+x]||[]).push([pi,ti])}));
+ const can=myTurn()&&G.dice?movable(G):[];
+ for(let y=0;y<15;y++)for(let x=0;x<15;x++){let bg='',k=-1;
+  if(x<6&&y<6)bg=COL[0]+'55';else if(x>8&&y<6)bg=COL[1]+'55';else if(x>8&&y>8)bg=COL[2]+'55';else if(x<6&&y>8)bg=COL[3]+'55';
+  HM.forEach((h,c)=>h.forEach(([a,b])=>{if(a==x&&b==y)bg=COL[c]+'aa'}));TR.forEach(([a,b],i)=>{if(a==x&&b==y){bg='#fff';START.forEach((s,c)=>{if(s==i)bg=COL[c]});if(SAFE.includes(i)&&!START.includes(i))bg='#ddd'}});
+  if(x>5&&x<9&&y>5&&y<9)bg='#ffd54f';
+  const tk=(at[y*15+x]||[]).map(([pi,ti])=>`<span class="tk ${pi==G.turn&&can.includes(ti)?'go':''}" data-t="${ti}" data-p="${pi}" style="background:${COL[G.players[pi].c]}">${EM[G.players[pi].em]}</span>`).join('');
+  cells+=`<div style="${bg?'background:'+bg:''}">${tk}</div>`}
+ const cur=G.players[G.turn];
+ v.innerHTML=`<div id="board">${cells}</div><div class="card row"><div id="dice">${G.last?['','⚀','⚁','⚂','⚃','⚄','⚅'][G.last]:'🎲'}</div><div style="flex:3"><b>${G.status=='done'?'🏆 '+esc(G.winner)+' jeet gaya!':esc(cur.name)+' ki baari'}</b><br><span class="sm">${esc(G.msg||'')}</span></div><button id="rl" ${myTurn()&&!G.dice?'':'disabled'}>Roll</button></div>
+ <div class="card">${plist}${adm?`<div class="bar"><button class="s" id="sk">⏭ Baari skip</button><button class="s" id="rs">🔄 Reset</button>${mode=='on'?'<button class="s" id="dl">🗑 Room delete</button>':''}</div>`:''}</div>`;
+ $('#rl').onclick=()=>{doRoll(G);push()};
+ document.querySelectorAll('.tk.go').forEach(t=>t.onclick=()=>{if(myTurn()){doMove(G,+t.dataset.t);push()}});
+ if(adm){$('#sk').onclick=()=>{nextTurn(G);G.msg='Admin ne baari skip ki';push()};$('#rs').onclick=()=>{if(confirm('Game reset karna hai?')){G.tokens=G.players.map(()=>[-1,-1,-1,-1]);G.turn=0;G.dice=null;G.last=0;G.status='play';G.winner='';G.msg='Naya khel!';push()}};
+  if($('#dl'))$('#dl').onclick=()=>{if(confirm('Room hamesha ke liye delete?'))ref.delete().catch(e=>toast(e.message||e))}}
+ bindKick()}
+function bindKick(){document.querySelectorAll('.kk').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(!confirm(G.players[i].name+' ko nikalna hai?'))return;
+ G.players.splice(i,1);G.tokens.splice(i,1);if(G.turn>=G.players.length)G.turn=0;G.dice=null;if(G.players.length<2&&G.status=='play')G.status='lobby';push()})}
+async function admin(){clearSubs();$('#app').innerHTML=`<h1>🛡️ Admin</h1><div class="card"><div id="rl2">Load ho raha hai...</div><button class="s w" id="bk">Wapas</button></div>`;$('#bk').onclick=home;
+ try{const s=await db.collection('rooms').get();$('#rl2').innerHTML=s.docs.map(d=>{const r=d.data();return`<div class="pl"><span style="flex:1"><b>${esc(d.id)}</b> · ${esc(r.status)}<br><span class="sm">${r.players.map(p=>esc(p.name)).join(', ')}</span></span><button class="s wr" data-c="${esc(d.id)}">Dekho</button><button class="s dr" data-c="${esc(d.id)}">🗑</button></div>`}).join('')||'Koi room nahi';
+ document.querySelectorAll('.wr').forEach(b=>b.onclick=()=>joinRoom(b.dataset.c,true));document.querySelectorAll('.dr').forEach(b=>b.onclick=async()=>{if(confirm('Delete?')){await db.doc('rooms/'+b.dataset.c).delete();admin()}})}catch(e){$('#rl2').textContent='Error: '+(e.message||e)}}
+db={doc:docRef,collection:colRef};conn();if(!me.id)me.id='g'+Math.random().toString(36).slice(2,10);save();me.name?home():login();
+</script></body></html>
